@@ -1,8 +1,9 @@
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap');
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #0a0a1a;
+  --foreground: #e8dcc8;
 }
 
 @theme inline {
@@ -12,15 +13,162 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+body {
+  background: #1a1040 !important;
+  color: var(--foreground);
+  font-family: 'Crimson Text', Georgia, serif;
+  overflow-x: hidden;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+html {
+  background: #1a1040 !important;
+}
+
+/* Fantasy background */
+.fantasy-bg {
+  background-image: url('/images/castle-bg.png');
+  background-position: center center;
+  background-size: auto 100%;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  position: relative;
+}
+
+.fantasy-bg::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(10, 10, 26, 0.3) 0%, rgba(10, 10, 26, 0.15) 50%, rgba(10, 10, 26, 0.4) 100%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Ornate border frame */
+.ornate-frame {
+  position: relative;
+  border: 1px solid rgba(180, 160, 120, 0.3);
+  border-radius: 12px;
+  background: rgba(15, 12, 30, 0.85);
+  backdrop-filter: blur(12px);
+}
+
+.ornate-frame::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: 12px;
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(200, 180, 120, 0.4), rgba(120, 100, 180, 0.2), rgba(200, 180, 120, 0.1), rgba(120, 100, 180, 0.3));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* Corner decorations */
+.ornate-frame::after {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border-radius: 8px;
+  border: 1px solid rgba(180, 160, 120, 0.1);
+  pointer-events: none;
+}
+
+/* Fantasy button */
+.fantasy-btn {
+  position: relative;
+  background: linear-gradient(135deg, #2a1f4e, #1a1040);
+  border: 1px solid rgba(180, 160, 120, 0.4);
+  color: #e8dcc8;
+  font-family: 'Cinzel', serif;
+  letter-spacing: 0.05em;
+  transition: all 0.3s ease;
+}
+
+.fantasy-btn:hover {
+  border-color: rgba(200, 180, 120, 0.7);
+  box-shadow: 0 0 20px rgba(180, 160, 120, 0.15), inset 0 0 20px rgba(180, 160, 120, 0.05);
+  transform: translateY(-1px);
+}
+
+.fantasy-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.fantasy-btn-primary {
+  background: linear-gradient(135deg, #3a2a6e, #2a1f5e);
+  border-color: rgba(160, 140, 220, 0.5);
+  box-shadow: 0 0 15px rgba(140, 120, 200, 0.1);
+}
+
+.fantasy-btn-primary:hover {
+  border-color: rgba(160, 140, 220, 0.8);
+  box-shadow: 0 0 25px rgba(140, 120, 200, 0.2), inset 0 0 20px rgba(140, 120, 200, 0.05);
+}
+
+.fantasy-btn-danger {
+  background: linear-gradient(135deg, #4e1a2a, #3a1020);
+  border-color: rgba(220, 120, 140, 0.5);
+}
+
+.fantasy-btn-danger:hover {
+  border-color: rgba(220, 120, 140, 0.8);
+  box-shadow: 0 0 25px rgba(220, 120, 140, 0.15);
+}
+
+/* Avatar glow frame */
+.avatar-frame {
+  position: relative;
+  border-radius: 16px;
+  overflow: visible;
+  background: transparent;
+}
+
+.avatar-frame::before {
+  display: none;
+}
+
+/* Scroll bar fantasy style */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(15, 12, 30, 0.5);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(180, 160, 120, 0.3);
+  border-radius: 3px;
+}
+
+/* Word highlight */
+span {
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+/* Page dot */
+.page-dot {
+  transition: all 0.3s ease;
+  border: 1px solid rgba(180, 160, 120, 0.3);
+}
+.page-dot.active {
+  background: rgba(180, 160, 120, 0.8);
+  border-color: rgba(200, 180, 120, 0.8);
+  box-shadow: 0 0 8px rgba(180, 160, 120, 0.4);
+}
+.page-dot:hover:not(.active) {
+  border-color: rgba(180, 160, 120, 0.6);
+  background: rgba(180, 160, 120, 0.2);
+}
+
+/* Speaking indicator glow */
+@keyframes speakingGlow {
+  0%, 100% { box-shadow: 0 0 15px rgba(140, 120, 200, 0.2); }
+  50% { box-shadow: 0 0 30px rgba(140, 120, 200, 0.4), 0 0 60px rgba(140, 120, 200, 0.1); }
+}
+.speaking-glow {
+  animation: speakingGlow 2s ease-in-out infinite;
 }
