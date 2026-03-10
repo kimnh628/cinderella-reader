@@ -7,118 +7,27 @@ import {
   VRMLoaderPlugin,
   VRM,
   VRMExpressionPresetName,
-  VRMHumanBoneName,
 } from "@pixiv/three-vrm";
+import {
+  VRMAnimationLoaderPlugin,
+  createVRMAnimationClip,
+} from "@pixiv/three-vrm-animation";
 
 interface VRMAvatarProps {
   isSpeaking: boolean;
-}
-
-const _euler = new THREE.Euler();
-const _qA = new THREE.Quaternion();
-const _qB = new THREE.Quaternion();
-const _qOut = new THREE.Quaternion();
-
-type BonePose = Record<string, { rotation: [number, number, number, number] }>;
-
-function eulerToQuat(x: number, y: number, z: number): [number, number, number, number] {
-  _euler.set(x, y, z);
-  _qOut.setFromEuler(_euler);
-  return [_qOut.x, _qOut.y, _qOut.z, _qOut.w];
-}
-
-function blendQ(
-  a: [number, number, number, number],
-  b: [number, number, number, number],
-  w: number
-): [number, number, number, number] {
-  _qA.set(a[0], a[1], a[2], a[3]);
-  _qB.set(b[0], b[1], b[2], b[3]);
-  _qOut.slerpQuaternions(_qA, _qB, w);
-  return [_qOut.x, _qOut.y, _qOut.z, _qOut.w];
-}
-
-/**
- * Build a blended idle/speaking pose.
- * Confirmed working: X+Z compound rotation on arms, applied after vrm.update().
- * Axis conventions for this model (confirmed via diagnostic):
- *   - Z+: left arm UP, right arm UP (negative)
- *   - Z-: left arm DOWN
- *   - X+: forward tilt
- */
-function buildPose(t: number, w: number): BonePose {
-  const pose: BonePose = {};
-  const b = (bone: string, idle: [number, number, number], speak: [number, number, number]) => {
-    pose[bone] = { rotation: blendQ(eulerToQuat(...idle), eulerToQuat(...speak), w) };
-  };
-
-  // Head
-  b(VRMHumanBoneName.Head,
-    [Math.sin(t * 0.4) * 0.05, Math.sin(t * 0.6) * 0.08, Math.sin(t * 0.35) * 0.03],
-    [Math.sin(t * 1.0) * 0.07 - 0.02, Math.sin(t * 0.8) * 0.12, Math.sin(t * 0.5) * 0.04]
-  );
-
-  // Spine — breathing
-  b(VRMHumanBoneName.Spine,
-    [0.03 + Math.sin(t * 1.2) * 0.015, 0, 0],
-    [0.04 + Math.sin(t * 1.2) * 0.02, Math.sin(t * 0.5) * 0.02, 0]
-  );
-
-  // Chest
-  b(VRMHumanBoneName.Chest,
-    [Math.sin(t * 1.2 + 0.5) * 0.01, 0, 0],
-    [Math.sin(t * 1.2 + 0.5) * 0.015, 0, 0]
-  );
-
-  // UpperChest
-  b(VRMHumanBoneName.UpperChest,
-    [0, Math.sin(t * 0.35 + 0.5) * 0.02, 0],
-    [0, Math.sin(t * 0.45 + 0.5) * 0.03, 0]
-  );
-
-  // Hips
-  b(VRMHumanBoneName.Hips,
-    [0, Math.sin(t * 0.3) * 0.03, Math.sin(t * 0.25) * 0.01],
-    [0, Math.sin(t * 0.4) * 0.04, Math.sin(t * 0.3) * 0.015]
-  );
-
-  // ── Arms: use X+Z compound (confirmed working) ──
-  // Left upper arm: X forward + Z negative = arm down
-  b(VRMHumanBoneName.LeftUpperArm,
-    [0.3 + Math.sin(t * 0.5) * 0.04, Math.sin(t * 0.4) * 0.03, -0.6 + Math.sin(t * 0.6) * 0.04],
-    [0.35 + Math.sin(t * 0.6) * 0.06, Math.sin(t * 0.5) * 0.04, -0.5 + Math.sin(t * 0.7) * 0.05]
-  );
-
-  // Right upper arm: X forward + Z positive = arm down
-  b(VRMHumanBoneName.RightUpperArm,
-    [0.3 + Math.sin(t * 0.5 + 1) * 0.04, Math.sin(t * 0.4 + 1) * -0.03, 0.6 + Math.sin(t * 0.6 + 0.5) * 0.04],
-    [0.4 + Math.sin(t * 1.0) * 0.1, Math.sin(t * 0.8) * 0.06, 0.35 + Math.sin(t * 1.3) * 0.1]
-  );
-
-  // Left lower arm: small X + Y for natural elbow bend
-  b(VRMHumanBoneName.LeftLowerArm,
-    [0.05, -0.2 + Math.sin(t * 0.7) * 0.03, 0],
-    [0.05, -0.3 + Math.sin(t * 0.8) * 0.04, 0]
-  );
-
-  // Right lower arm
-  b(VRMHumanBoneName.RightLowerArm,
-    [0.05, 0.2 + Math.sin(t * 0.7 + 1) * 0.03, 0],
-    [0.05, 0.35 + Math.sin(t * 1.1) * 0.06, 0]
-  );
-
-  return pose;
 }
 
 export default function VRMAvatar({ isSpeaking }: VRMAvatarProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const vrmRef = useRef<VRM | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const mixerRef = useRef<THREE.AnimationMixer | null>(null);
+  const idleActionRef = useRef<THREE.AnimationAction | null>(null);
+  const speakingActionRef = useRef<THREE.AnimationAction | null>(null);
   const animationRef = useRef<number>(0);
   const blinkTimerRef = useRef(0);
   const mouthPhaseRef = useRef(0);
   const isSpeakingRef = useRef(isSpeaking);
-  const timeRef = useRef(0);
   const prevTimeRef = useRef(0);
   const crossFadeRef = useRef(0);
 
@@ -162,18 +71,62 @@ export default function VRMAvatar({ isSpeaking }: VRMAvatarProps) {
     scene.add(bottomFill);
 
     // Load VRM
-    const loader = new GLTFLoader();
-    loader.register((parser) => new VRMLoaderPlugin(parser));
+    const vrmLoader = new GLTFLoader();
+    vrmLoader.register((parser) => new VRMLoaderPlugin(parser));
 
-    loader.load(
+    // Load VRMA helper
+    async function loadVRMA(url: string) {
+      const vrmaLoader = new GLTFLoader();
+      vrmaLoader.register((p) => new VRMAnimationLoaderPlugin(p));
+      const gltf = await new Promise<THREE.Object3D & { userData: Record<string, unknown> }>((res, rej) =>
+        vrmaLoader.load(url, res as (gltf: unknown) => void, undefined, rej)
+      );
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (gltf as any).userData.vrmAnimations[0];
+    }
+
+    vrmLoader.load(
       "/models/cinderella.vrm",
-      (gltf) => {
+      async (gltf) => {
         if (disposed) return;
         const vrm = gltf.userData.vrm as VRM;
         scene.add(vrm.scene);
         vrmRef.current = vrm;
         vrm.expressionManager?.setValue(VRMExpressionPresetName.Happy, 0.1);
         console.log("[VRM] Loaded OK");
+
+        // Create mixer on the VRM scene
+        const mixer = new THREE.AnimationMixer(vrm.scene);
+        mixerRef.current = mixer;
+
+        // Load VRMA animations
+        try {
+          const [idleAnim, speakingAnim] = await Promise.all([
+            loadVRMA("/models/idle.vrma"),
+            loadVRMA("/models/speaking.vrma"),
+          ]);
+
+          const idleClip = createVRMAnimationClip(idleAnim, vrm);
+          const speakingClip = createVRMAnimationClip(speakingAnim, vrm);
+
+          const idleAction = mixer.clipAction(idleClip);
+          const speakingAction = mixer.clipAction(speakingClip);
+
+          idleAction.setLoop(THREE.LoopRepeat, Infinity);
+          speakingAction.setLoop(THREE.LoopRepeat, Infinity);
+
+          idleAction.setEffectiveWeight(1);
+          idleAction.play();
+          speakingAction.setEffectiveWeight(0);
+          speakingAction.play();
+
+          idleActionRef.current = idleAction;
+          speakingActionRef.current = speakingAction;
+
+          console.log("[VRMA] Animations loaded OK");
+        } catch (e) {
+          console.warn("[VRMA] Loading failed:", e);
+        }
       },
       undefined,
       (error) => console.error("VRM load error:", error)
@@ -194,20 +147,24 @@ export default function VRMAvatar({ isSpeaking }: VRMAvatarProps) {
       const now = performance.now() / 1000;
       const delta = prevTimeRef.current === 0 ? 0.016 : Math.min(now - prevTimeRef.current, 0.1);
       prevTimeRef.current = now;
-      timeRef.current += delta;
 
-      // Crossfade
+      // Crossfade bone weights
       const target = speaking ? 1 : 0;
       if (Math.abs(crossFadeRef.current - target) > 0.001) {
-        const step = delta * 1.0;
+        const step = delta * 2.0;
         crossFadeRef.current = target > crossFadeRef.current
           ? Math.min(crossFadeRef.current + step, 1)
           : Math.max(crossFadeRef.current - step, 0);
       } else {
         crossFadeRef.current = target;
       }
-      const p = crossFadeRef.current;
-      const w = p * p * (3 - 2 * p);
+      const w = crossFadeRef.current;
+
+      // Update VRMA action weights
+      if (idleActionRef.current && speakingActionRef.current) {
+        idleActionRef.current.setEffectiveWeight(1 - w);
+        speakingActionRef.current.setEffectiveWeight(w);
+      }
 
       // Blink
       blinkTimerRef.current += delta;
@@ -230,16 +187,10 @@ export default function VRMAvatar({ isSpeaking }: VRMAvatarProps) {
         vrm.expressionManager?.setValue(VRMExpressionPresetName.Happy, 0.1);
       }
 
-      // 1) Apply bone pose BEFORE vrm.update — this is the canonical pattern.
-      //    vrm.update() internally calls humanoid.update() which transfers
-      //    normalized rig bones → raw bones, then runs spring bones, constraints,
-      //    and expressions on the correctly-posed skeleton.
-      //    Setting the pose AFTER vrm.update() and calling humanoid.update() again
-      //    can cause conflicts with node constraints and spring bone state.
-      const pose = buildPose(timeRef.current, w);
-      vrm.humanoid.setNormalizedPose(pose);
-
-      // 2) vrm.update propagates pose to raw bones, then updates springs/constraints/expressions
+      // Update mixer (applies VRMA bone poses) then vrm.update (propagates to raw bones + springs)
+      if (mixerRef.current) {
+        mixerRef.current.update(delta);
+      }
       vrm.update(delta);
 
       renderer.render(scene, camera);
