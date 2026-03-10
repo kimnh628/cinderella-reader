@@ -12,6 +12,7 @@ import {
 
 interface VRMAvatarProps {
   isSpeaking: boolean;
+  getVolume: () => { volume: number; low: number; mid: number; high: number };
 }
 
 const _euler = new THREE.Euler();
@@ -38,70 +39,44 @@ function blendQ(
   return [_qOut.x, _qOut.y, _qOut.z, _qOut.w];
 }
 
-/**
- * Build a blended idle/speaking pose.
- * Confirmed working: X+Z compound rotation on arms, applied after vrm.update().
- * Axis conventions for this model (confirmed via diagnostic):
- *   - Z+: left arm UP, right arm UP (negative)
- *   - Z-: left arm DOWN
- *   - X+: forward tilt
- */
 function buildPose(t: number, w: number): BonePose {
   const pose: BonePose = {};
   const b = (bone: string, idle: [number, number, number], speak: [number, number, number]) => {
     pose[bone] = { rotation: blendQ(eulerToQuat(...idle), eulerToQuat(...speak), w) };
   };
 
-  // Head
   b(VRMHumanBoneName.Head,
     [Math.sin(t * 0.4) * 0.05, Math.sin(t * 0.6) * 0.08, Math.sin(t * 0.35) * 0.03],
     [Math.sin(t * 1.0) * 0.07 - 0.02, Math.sin(t * 0.8) * 0.12, Math.sin(t * 0.5) * 0.04]
   );
-
-  // Spine — breathing
   b(VRMHumanBoneName.Spine,
     [0.03 + Math.sin(t * 1.2) * 0.015, 0, 0],
     [0.04 + Math.sin(t * 1.2) * 0.02, Math.sin(t * 0.5) * 0.02, 0]
   );
-
-  // Chest
   b(VRMHumanBoneName.Chest,
     [Math.sin(t * 1.2 + 0.5) * 0.01, 0, 0],
     [Math.sin(t * 1.2 + 0.5) * 0.015, 0, 0]
   );
-
-  // UpperChest
   b(VRMHumanBoneName.UpperChest,
     [0, Math.sin(t * 0.35 + 0.5) * 0.02, 0],
     [0, Math.sin(t * 0.45 + 0.5) * 0.03, 0]
   );
-
-  // Hips
   b(VRMHumanBoneName.Hips,
     [0, Math.sin(t * 0.3) * 0.03, Math.sin(t * 0.25) * 0.01],
     [0, Math.sin(t * 0.4) * 0.04, Math.sin(t * 0.3) * 0.015]
   );
-
-  // ── Arms: use X+Z compound (confirmed working) ──
-  // Left upper arm: X forward + Z negative = arm down
   b(VRMHumanBoneName.LeftUpperArm,
     [0.3 + Math.sin(t * 0.5) * 0.04, Math.sin(t * 0.4) * 0.03, -0.6 + Math.sin(t * 0.6) * 0.04],
     [0.35 + Math.sin(t * 0.6) * 0.06, Math.sin(t * 0.5) * 0.04, -0.5 + Math.sin(t * 0.7) * 0.05]
   );
-
-  // Right upper arm: X forward + Z positive = arm down
   b(VRMHumanBoneName.RightUpperArm,
     [0.3 + Math.sin(t * 0.5 + 1) * 0.04, Math.sin(t * 0.4 + 1) * -0.03, 0.6 + Math.sin(t * 0.6 + 0.5) * 0.04],
     [0.4 + Math.sin(t * 1.0) * 0.1, Math.sin(t * 0.8) * 0.06, 0.35 + Math.sin(t * 1.3) * 0.1]
   );
-
-  // Left lower arm: small X + Y for natural elbow bend
   b(VRMHumanBoneName.LeftLowerArm,
     [0.05, -0.2 + Math.sin(t * 0.7) * 0.03, 0],
     [0.05, -0.3 + Math.sin(t * 0.8) * 0.04, 0]
   );
-
-  // Right lower arm
   b(VRMHumanBoneName.RightLowerArm,
     [0.05, 0.2 + Math.sin(t * 0.7 + 1) * 0.03, 0],
     [0.05, 0.35 + Math.sin(t * 1.1) * 0.06, 0]
@@ -110,14 +85,18 @@ function buildPose(t: number, w: number): BonePose {
   return pose;
 }
 
-export default function VRMAvatar({ isSpeaking }: VRMAvatarProps) {
+export default function VRMAvatar({ isSpeaking, getVolume }: VRMAvatarProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const vrmRef = useRef<VRM | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const animationRef = useRef<number>(0);
   const blinkTimerRef = useRef(0);
-  const mouthPhaseRef = useRef(0);
   const isSpeakingRef = useRef(isSpeaking);
+  const getVolumeRef = useRef(getVolume);
+  const smoothVolumeRef = useRef(0);
+  const smoothLowRef = useRef(0);
+  const smoothMidRef = useRef(0);
+  const smoothHighRef = useRef(0);
   const timeRef = useRef(0);
   const prevTimeRef = useRef(0);
   const crossFadeRef = useRef(0);
@@ -125,6 +104,10 @@ export default function VRMAvatar({ isSpeaking }: VRMAvatarProps) {
   useEffect(() => {
     isSpeakingRef.current = isSpeaking;
   }, [isSpeaking]);
+
+  useEffect(() => {
+    getVolumeRef.current = getVolume;
+  }, [getVolume]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -136,8 +119,8 @@ export default function VRMAvatar({ isSpeaking }: VRMAvatarProps) {
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(30, width / height, 0.1, 100);
-    camera.position.set(0, 0.9, 1.8);
-    camera.lookAt(0, 0.85, 0);
+    camera.position.set(-0.037, 0.978, 1.596);
+    camera.lookAt(-0.063, 0.671, 0.094);
 
     const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
     renderer.setSize(width, height);
@@ -161,7 +144,6 @@ export default function VRMAvatar({ isSpeaking }: VRMAvatarProps) {
     bottomFill.position.set(0, -1, 1);
     scene.add(bottomFill);
 
-    // Load VRM
     const loader = new GLTFLoader();
     loader.register((parser) => new VRMLoaderPlugin(parser));
 
@@ -172,14 +154,20 @@ export default function VRMAvatar({ isSpeaking }: VRMAvatarProps) {
         const vrm = gltf.userData.vrm as VRM;
         scene.add(vrm.scene);
         vrmRef.current = vrm;
-        vrm.expressionManager?.setValue(VRMExpressionPresetName.Happy, 0.1);
+
+        // Disable overrideMouth on all expressions so lip sync is never blocked
+        if (vrm.expressionManager) {
+          for (const expr of vrm.expressionManager.expressions) {
+            expr.overrideMouth = "none";
+          }
+        }
+
         console.log("[VRM] Loaded OK");
       },
       undefined,
       (error) => console.error("VRM load error:", error)
     );
 
-    // Animation loop
     const animate = () => {
       if (disposed) return;
       animationRef.current = requestAnimationFrame(animate);
@@ -219,29 +207,70 @@ export default function VRMAvatar({ isSpeaking }: VRMAvatarProps) {
         }, 150);
       }
 
-      // Lip sync
+      // Smooth, subtle lip sync using ARKit custom expressions
       if (speaking) {
-        mouthPhaseRef.current += delta * 8;
-        const mv = (Math.sin(mouthPhaseRef.current) * 0.3 + 0.3) * (0.7 + Math.random() * 0.3);
-        vrm.expressionManager?.setValue(VRMExpressionPresetName.Aa, mv);
-        vrm.expressionManager?.setValue(VRMExpressionPresetName.Happy, 0.2);
+        let audio = { volume: 0, low: 0, mid: 0, high: 0 };
+        try { audio = getVolumeRef.current(); } catch { /* noop */ }
+
+        // Time-based fallback when no audio data
+        if (audio.volume < 0.01) {
+          const t = timeRef.current;
+          const base = 0.25 + Math.sin(t * 2.5) * 0.1;
+          const jitter = Math.sin(t * 7.3) * 0.06 + Math.sin(t * 11.1) * 0.03;
+          const pause = Math.sin(t * 1.2) > 0.85 ? 0 : 1;
+          const fakeVol = Math.max(0, Math.min(1, (base + jitter) * pause));
+          audio = { volume: fakeVol, low: fakeVol * 0.6, mid: fakeVol * 0.3, high: fakeVol * 0.1 };
+        }
+
+        // Per-band smoothing for natural transitions (lower alpha = smoother)
+        const smoothAlpha = Math.min(1, delta * 8);
+        smoothVolumeRef.current += (audio.volume - smoothVolumeRef.current) * smoothAlpha;
+        smoothLowRef.current += (audio.low - smoothLowRef.current) * smoothAlpha;
+        smoothMidRef.current += (audio.mid - smoothMidRef.current) * smoothAlpha;
+        smoothHighRef.current += (audio.high - smoothHighRef.current) * smoothAlpha;
+
+        const vol = smoothVolumeRef.current;
+        const low = smoothLowRef.current;
+        const mid = smoothMidRef.current;
+        const high = smoothHighRef.current;
+
+        // Subtle mouth shapes — reduced multipliers for natural look
+        const jawOpen = Math.min(0.45, low * 0.6 + vol * 0.15);
+        const funnel = Math.min(0.35, Math.max(0, low - mid) * 0.8);
+        const smile = Math.min(0.25, mid * 0.4);
+        const pucker = Math.min(0.2, high * 0.5);
+        const lowerDown = Math.min(0.35, vol * 0.3);
+
+        vrm.expressionManager?.setValue("jawOpen", jawOpen);
+        vrm.expressionManager?.setValue("mouthFunnel", funnel);
+        vrm.expressionManager?.setValue("mouthPucker", pucker);
+        vrm.expressionManager?.setValue("mouthSmileLeft", smile);
+        vrm.expressionManager?.setValue("mouthSmileRight", smile);
+        vrm.expressionManager?.setValue("mouthLowerDownLeft", lowerDown);
+        vrm.expressionManager?.setValue("mouthLowerDownRight", lowerDown);
       } else {
-        vrm.expressionManager?.setValue(VRMExpressionPresetName.Aa, 0);
-        vrm.expressionManager?.setValue(VRMExpressionPresetName.Happy, 0.1);
+        // Gentle fade-out
+        const fadeAlpha = Math.min(1, delta * 5);
+        smoothVolumeRef.current += (0 - smoothVolumeRef.current) * fadeAlpha;
+        smoothLowRef.current += (0 - smoothLowRef.current) * fadeAlpha;
+        smoothMidRef.current += (0 - smoothMidRef.current) * fadeAlpha;
+        smoothHighRef.current += (0 - smoothHighRef.current) * fadeAlpha;
+        if (smoothVolumeRef.current < 0.005) smoothVolumeRef.current = 0;
+        const fadeVol = smoothVolumeRef.current;
+        vrm.expressionManager?.setValue("jawOpen", fadeVol * 0.4);
+        vrm.expressionManager?.setValue("mouthFunnel", 0);
+        vrm.expressionManager?.setValue("mouthPucker", 0);
+        vrm.expressionManager?.setValue("mouthSmileLeft", 0.08);
+        vrm.expressionManager?.setValue("mouthSmileRight", 0.08);
+        vrm.expressionManager?.setValue("mouthLowerDownLeft", 0);
+        vrm.expressionManager?.setValue("mouthLowerDownRight", 0);
       }
 
-      // 1) Apply bone pose BEFORE vrm.update — this is the canonical pattern.
-      //    vrm.update() internally calls humanoid.update() which transfers
-      //    normalized rig bones → raw bones, then runs spring bones, constraints,
-      //    and expressions on the correctly-posed skeleton.
-      //    Setting the pose AFTER vrm.update() and calling humanoid.update() again
-      //    can cause conflicts with node constraints and spring bone state.
+      // Bone pose
       const pose = buildPose(timeRef.current, w);
       vrm.humanoid.setNormalizedPose(pose);
 
-      // 2) vrm.update propagates pose to raw bones, then updates springs/constraints/expressions
       vrm.update(delta);
-
       renderer.render(scene, camera);
     };
 

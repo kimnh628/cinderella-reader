@@ -17,7 +17,7 @@ const VRMAvatar = dynamic(() => import("@/components/VRMAvatar"), {
 
 export default function Home() {
   const [currentPage, setCurrentPage] = useState(0);
-  const { speak, stop, isSpeaking, currentSentenceIndex } = useTTS();
+  const { speak, stop, isSpeaking, currentSentenceIndex, getVolume } = useTTS();
   const page = storyPages[currentPage];
 
   const handlePlay = useCallback(() => {
@@ -142,7 +142,7 @@ export default function Home() {
             }`}
             style={{ height: "140%", zIndex: 5 }}
           >
-            <VRMAvatar isSpeaking={isSpeaking} />
+            <VRMAvatar isSpeaking={isSpeaking} getVolume={getVolume} />
           </div>
           <p
             className="text-center text-xs mt-2 relative"
